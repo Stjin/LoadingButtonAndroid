@@ -28,7 +28,7 @@ class SampleActivity : AppCompatActivity() {
 private fun defaultColor(context: Context) = ContextCompat.getColor(context, android.R.color.black)
 
 private fun defaultDoneImage(resources: Resources) =
-    BitmapFactory.decodeResource(resources, R.drawable.ic_done_white_48dp)
+    BitmapFactory.decodeResource(resources, com.github.leandroborgesferreira.loadingbutton.R.drawable.ic_done_white_48dp)
 
 private fun ProgressButton.morphDoneAndRevert(
     context: Context,
