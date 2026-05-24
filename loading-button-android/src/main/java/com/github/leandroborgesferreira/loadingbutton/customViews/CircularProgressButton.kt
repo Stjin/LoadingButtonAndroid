@@ -1,196 +1,137 @@
 package com.github.leandroborgesferreira.loadingbutton.customViews
 
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
 import android.animation.AnimatorSet
+import android.animation.ValueAnimator
 import android.content.Context
-import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.Rect
-import android.graphics.drawable.Drawable
+import android.graphics.drawable.Animatable
 import android.util.AttributeSet
-import androidx.appcompat.widget.AppCompatButton
-import androidx.core.content.ContextCompat
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.OnLifecycleEvent
-import com.github.leandroborgesferreira.loadingbutton.animatedDrawables.CircularProgressAnimatedDrawable
-import com.github.leandroborgesferreira.loadingbutton.animatedDrawables.CircularRevealAnimatedDrawable
-import com.github.leandroborgesferreira.loadingbutton.animatedDrawables.ProgressType
-import com.github.leandroborgesferreira.loadingbutton.disposeAnimator
-import com.github.leandroborgesferreira.loadingbutton.presentation.ProgressButtonPresenter
-import com.github.leandroborgesferreira.loadingbutton.presentation.State
+import com.google.android.material.button.MaterialButton
+import com.google.android.material.progressindicator.CircularProgressIndicatorSpec
+import com.google.android.material.progressindicator.IndeterminateDrawable
 
-open class CircularProgressButton : AppCompatButton, ProgressButton {
+class CircularProgressButton @JvmOverloads constructor(
+    context: Context,
+    attrs: AttributeSet? = null,
+    defStyleAttr: Int = com.google.android.material.R.attr.materialButtonStyle
+) : MaterialButton(context, attrs, defStyleAttr) {
 
-    constructor(context: Context) : super(context) {
-        init()
+    private var isMorphing = false
+    private var isProgressing = false
+
+    private var initialWidth: Int = 0
+    private var initialLayoutParamsWidth: Int = 0
+    private var initialText: CharSequence = ""
+    private var initialPaddingLeft: Int = 0
+    private var initialPaddingRight: Int = 0
+
+    private val progressSpec by lazy {
+        CircularProgressIndicatorSpec(
+            context,
+            null,
+            0,
+            com.google.android.material.R.style.Widget_Material3Expressive_CircularProgressIndicator_Wavy
+        ).apply {
+            indicatorColors = intArrayOf(textColors.defaultColor)
+            indicatorSize = (this@CircularProgressButton.height * 0.6).toInt()
+            trackThickness = (this@CircularProgressButton.height * 0.1).toInt()
+        }
     }
 
-    constructor(context: Context, attrs: AttributeSet) : super(context, attrs) {
-        init(attrs)
+    private val indeterminateDrawable by lazy {
+        IndeterminateDrawable.createCircularDrawable(context, progressSpec)
     }
 
-    constructor(context: Context, attrs: AttributeSet, defStyleAttr: Int) : super(context, attrs, defStyleAttr) {
-        init(attrs, defStyleAttr)
+    init {
+        iconGravity = ICON_GRAVITY_TEXT_START
+        iconPadding = 0
     }
 
-    override var paddingProgress = 0F
+    fun startAnimation() {
+        if (isMorphing || isProgressing) return
+        isMorphing = true
+        isClickable = false
+        isPressed = false // Clear the press state visually
+        
+        initialWidth = width
+        initialLayoutParamsWidth = layoutParams.width
+        initialText = text
+        initialPaddingLeft = paddingLeft
+        initialPaddingRight = paddingRight
 
-    override var spinningBarWidth = 10F
-    override var spinningBarColor = ContextCompat.getColor(context, android.R.color.black)
+        val finalWidth = height // Make it a circle
 
-    override var finalCorner = 0F
-    override var initialCorner = 0F
-
-    private lateinit var initialState: InitialState
-
-    override val finalWidth: Int by lazy {
-        val padding = Rect()
-        drawableBackground.getPadding(padding)
-        finalHeight - (Math.abs(padding.top - padding.left) * 2)
-    }
-
-    override val finalHeight: Int by lazy { height }
-    private val initialHeight: Int by lazy { height }
-
-    override var progressType: ProgressType
-        get() = progressAnimatedDrawable.progressType
-        set(value) {
-            progressAnimatedDrawable.progressType = value
+        val widthAnimator = ValueAnimator.ofInt(initialWidth, finalWidth).apply {
+            addUpdateListener {
+                layoutParams = layoutParams.apply { width = it.animatedValue as Int }
+            }
         }
 
-    override lateinit var drawableBackground: Drawable
+        val paddingAnimator = ValueAnimator.ofFloat(1f, 0f).apply {
+            addUpdateListener {
+                val fraction = it.animatedValue as Float
+                setPadding((initialPaddingLeft * fraction).toInt(), paddingTop, (initialPaddingRight * fraction).toInt(), paddingBottom)
+            }
+        }
 
-    private var savedAnimationEndListener: () -> Unit = {}
-
-    private val presenter = ProgressButtonPresenter(this)
-
-    private val morphAnimator by lazy {
         AnimatorSet().apply {
-            playTogether(
-                cornerAnimator(drawableBackground, initialCorner, finalCorner),
-                widthAnimator(this@CircularProgressButton, initialState.initialWidth, finalWidth),
-                heightAnimator(this@CircularProgressButton, initialHeight, finalHeight)
-            )
+            playTogether(widthAnimator, paddingAnimator)
+            duration = 300
+            addListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationStart(animation: Animator) {
+                    text = "" // Hide text as it morphs
+                }
 
-            addListener(morphListener(presenter::morphStart, presenter::morphEnd))
+                override fun onAnimationEnd(animation: Animator) {
+                    isMorphing = false
+                    isProgressing = true
+                    
+                    // Display and start Material 3 Wave animation
+                    icon = indeterminateDrawable
+                    (indeterminateDrawable as Animatable).start()
+                }
+            })
+            start()
         }
     }
 
-    private val morphRevertAnimator by lazy {
+    fun revertAnimation() {
+        if (isMorphing || !isProgressing) return
+        isMorphing = true
+        isProgressing = false
+
+        // Stop and hide the spinner
+        (indeterminateDrawable as Animatable).stop()
+        icon = null
+
+        val finalWidth = height
+
+        val widthAnimator = ValueAnimator.ofInt(finalWidth, initialWidth).apply {
+            addUpdateListener {
+                layoutParams = layoutParams.apply { width = it.animatedValue as Int }
+            }
+        }
+
+        val paddingAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
+            addUpdateListener {
+                val fraction = it.animatedValue as Float
+                setPadding((initialPaddingLeft * fraction).toInt(), paddingTop, (initialPaddingRight * fraction).toInt(), paddingBottom)
+            }
+        }
+
         AnimatorSet().apply {
-            playTogether(
-                cornerAnimator(drawableBackground, finalCorner, initialCorner),
-                widthAnimator(this@CircularProgressButton, finalWidth, initialState.initialWidth),
-                heightAnimator(this@CircularProgressButton, finalHeight, initialHeight)
-            )
-
-            addListener(morphListener(presenter::morphRevertStart, presenter::morphRevertEnd))
+            playTogether(widthAnimator, paddingAnimator)
+            duration = 300
+            addListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: Animator) {
+                    text = initialText
+                    isMorphing = false
+                    isClickable = true
+                    layoutParams = layoutParams.apply { width = initialLayoutParamsWidth }
+                }
+            })
+            start()
         }
     }
-
-    private val progressAnimatedDrawable: CircularProgressAnimatedDrawable by lazy {
-        createProgressDrawable()
-    }
-
-    private lateinit var revealAnimatedDrawable: CircularRevealAnimatedDrawable
-
-    override fun getState(): State = presenter.state
-
-    override fun saveInitialState() {
-        initialState = InitialState(width, text, compoundDrawables)
-    }
-
-    override fun recoverInitialState() {
-        text = initialState.initialText
-        setCompoundDrawables(
-            initialState.compoundDrawables[0],
-            initialState.compoundDrawables[1],
-            initialState.compoundDrawables[2],
-            initialState.compoundDrawables[3]
-        )
-    }
-
-    override fun hideInitialState() {
-        text = null
-    }
-
-    override fun drawProgress(canvas: Canvas) {
-        progressAnimatedDrawable.drawProgress(canvas)
-    }
-
-    override fun drawDoneAnimation(canvas: Canvas) {
-        revealAnimatedDrawable.draw(canvas)
-    }
-
-    override fun startRevealAnimation() {
-        revealAnimatedDrawable.start()
-    }
-
-    override fun startMorphAnimation() {
-        applyAnimationEndListener(morphAnimator, savedAnimationEndListener)
-        morphAnimator.start()
-    }
-
-    override fun startMorphRevertAnimation() {
-        applyAnimationEndListener(morphRevertAnimator, savedAnimationEndListener)
-        morphRevertAnimator.start()
-    }
-
-    override fun stopProgressAnimation() {
-        progressAnimatedDrawable.stop()
-    }
-
-    override fun stopMorphAnimation() {
-        morphAnimator.end()
-    }
-
-    override fun startAnimation(onAnimationEndListener: () -> Unit) {
-        savedAnimationEndListener = onAnimationEndListener
-        presenter.startAnimation()
-    }
-
-    override fun revertAnimation(onAnimationEndListener: () -> Unit) {
-        savedAnimationEndListener = onAnimationEndListener
-        presenter.revertAnimation()
-    }
-
-    override fun stopAnimation() {
-        presenter.stopAnimation()
-    }
-
-    override fun doneLoadingAnimation(fillColor: Int, bitmap: Bitmap) {
-        presenter.doneLoadingAnimation(fillColor, bitmap)
-    }
-
-    override fun initRevealAnimation(fillColor: Int, bitmap: Bitmap) {
-        revealAnimatedDrawable = createRevealAnimatedDrawable(fillColor, bitmap)
-    }
-
-    @OnLifecycleEvent(Lifecycle.Event.ON_DESTROY)
-    fun dispose() {
-        if (presenter.state != State.BEFORE_DRAW) {
-            morphAnimator.disposeAnimator()
-            morphRevertAnimator.disposeAnimator()
-        }
-    }
-
-    override fun onDraw(canvas: Canvas) {
-        super.onDraw(canvas)
-
-        presenter.onDraw(canvas)
-    }
-
-    override fun setProgress(value: Float) {
-        if (presenter.validateSetProgress()) {
-            progressAnimatedDrawable.progress = value
-        } else {
-            throw IllegalStateException("Set progress in being called in the wrong state: ${presenter.state}." +
-                " Allowed states: ${State.PROGRESS}, ${State.MORPHING}, ${State.WAITING_PROGRESS}")
-        }
-    }
-
-    data class InitialState(
-        var initialWidth: Int,
-        val initialText: CharSequence,
-        val compoundDrawables: Array<Drawable>
-    )
 }

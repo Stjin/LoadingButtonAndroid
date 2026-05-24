@@ -22,14 +22,9 @@
         android:layout_marginLeft="18dp"
         android:layout_marginRight="18dp"
         android:layout_marginBottom="20dp"
-        android:background="@drawable/button_shape_no_fill"
+        app:backgroundTint="#FFDDDDDD"
         android:text="Send"
         android:textColor="@android:color/black"
-        app:finalCornerAngle="50dp"
-        app:initialCornerAngle="10dp"
-        app:spinning_bar_color="#FF000000"
-        app:spinning_bar_padding="8dp"
-        app:spinning_bar_width="4dp"
         />
 
     </androidx.appcompat.widget.LinearLayoutCompat>
