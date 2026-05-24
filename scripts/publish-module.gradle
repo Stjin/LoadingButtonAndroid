@@ -20,6 +20,11 @@ task javadocJar(type: Jar, dependsOn: dokkaJavadoc) {
     from dokkaJavadoc.outputDirectory
 }
 
+tasks.withType(GenerateModuleMetadata).configureEach {
+    dependsOn androidSourcesJar
+    dependsOn javadocJar
+}
+
 artifacts {
     archives androidSourcesJar
     archives javadocJar
@@ -34,9 +39,6 @@ afterEvaluate {
                 version "2.3.0"
 
                 from components.release
-
-                artifact androidSourcesJar
-                artifact javadocJar
 
                 pom {
                     name = "loading-button-android"
@@ -67,11 +69,24 @@ afterEvaluate {
     }
 }
 
-signing {
-    useInMemoryPgpKeys(
-            rootProject.ext["signing.keyId"],
-            rootProject.ext["signing.key"],
-            rootProject.ext["signing.password"],
-    )
-    sign publishing.publications
+def isReleaseBuild() {
+    return !version.contains("SNAPSHOT")
+}
+
+def getReleaseRepositoryUrl() {
+    return hasProperty('RELEASE_REPOSITORY_URL') ? RELEASE_REPOSITORY_URL
+            : "https://oss.sonatype.org/service/local/staging/deploy/maven2/"
+}
+
+def getSnapshotRepositoryUrl() {
+    return hasProperty('SNAPSHOT_REPOSITORY_URL') ? SNAPSHOT_REPOSITORY_URL
+            : "https://oss.sonatype.org/content/repositories/snapshots/"
+}
+
+def getRepositoryUsername() {
+    return hasProperty('NEXUS_USERNAME') ? NEXUS_USERNAME : ""
+}
+
+def getRepositoryPassword() {
+    return hasProperty('NEXUS_PASSWORD') ? NEXUS_PASSWORD : ""
 }
