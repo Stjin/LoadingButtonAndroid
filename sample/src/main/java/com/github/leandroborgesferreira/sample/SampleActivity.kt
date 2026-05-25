@@ -5,6 +5,7 @@ import android.os.Handler
 import android.os.Looper
 import androidx.appcompat.app.AppCompatActivity
 import com.github.leandroborgesferreira.loadingbutton.customViews.CircularProgressButton
+import kotlin.random.Random
 
 class SampleActivity : AppCompatActivity() {
 
@@ -21,7 +22,7 @@ class SampleActivity : AppCompatActivity() {
             // Simulate a network request and revert after 3 seconds
             Handler(Looper.getMainLooper()).postDelayed({
                 button.revertAnimation()
-            }, 3000)
+            }, (300..3000).random().toLong())
         }
     }
 }

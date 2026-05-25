@@ -6,6 +6,8 @@ import android.animation.AnimatorSet
 import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.drawable.Animatable
+import android.os.Handler
+import android.os.Looper
 import android.util.AttributeSet
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.progressindicator.CircularProgressIndicatorSpec
@@ -26,22 +28,8 @@ class CircularProgressButton @JvmOverloads constructor(
     private var initialPaddingLeft: Int = 0
     private var initialPaddingRight: Int = 0
 
-    private val progressSpec by lazy {
-        CircularProgressIndicatorSpec(
-            context,
-            null,
-            0,
-            com.google.android.material.R.style.Widget_Material3Expressive_CircularProgressIndicator_Wavy
-        ).apply {
-            indicatorColors = intArrayOf(textColors.defaultColor)
-            indicatorSize = (this@CircularProgressButton.height * 0.6).toInt()
-            trackThickness = (this@CircularProgressButton.height * 0.1).toInt()
-        }
-    }
-
-    private val indeterminateDrawable by lazy {
-        IndeterminateDrawable.createCircularDrawable(context, progressSpec)
-    }
+    private var morphAnimator: AnimatorSet? = null
+    private var spinner: IndeterminateDrawable<*>? = null
 
     init {
         iconGravity = ICON_GRAVITY_TEXT_START
@@ -49,47 +37,77 @@ class CircularProgressButton @JvmOverloads constructor(
     }
 
     fun startAnimation() {
-        if (isMorphing || isProgressing) return
+        if (isProgressing) return
+        
+        val currentWidth = if (isMorphing) {
+            morphAnimator?.cancel()
+            layoutParams.width
+        } else {
+            initialWidth = width
+            initialLayoutParamsWidth = layoutParams.width
+            initialText = text
+            initialPaddingLeft = paddingLeft
+            initialPaddingRight = paddingRight
+            width
+        }
+
         isMorphing = true
         isClickable = false
         isPressed = false // Clear the press state visually
-        
-        initialWidth = width
-        initialLayoutParamsWidth = layoutParams.width
-        initialText = text
-        initialPaddingLeft = paddingLeft
-        initialPaddingRight = paddingRight
 
         val finalWidth = height // Make it a circle
 
-        val widthAnimator = ValueAnimator.ofInt(initialWidth, finalWidth).apply {
+        val widthAnimator = ValueAnimator.ofInt(currentWidth, finalWidth).apply {
             addUpdateListener {
                 layoutParams = layoutParams.apply { width = it.animatedValue as Int }
             }
         }
 
-        val paddingAnimator = ValueAnimator.ofFloat(1f, 0f).apply {
+        val paddingAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
+            val startPaddingLeft = paddingLeft
+            val startPaddingRight = paddingRight
             addUpdateListener {
                 val fraction = it.animatedValue as Float
-                setPadding((initialPaddingLeft * fraction).toInt(), paddingTop, (initialPaddingRight * fraction).toInt(), paddingBottom)
+                val currentLeft = startPaddingLeft + ((0 - startPaddingLeft) * fraction).toInt()
+                val currentRight = startPaddingRight + ((0 - startPaddingRight) * fraction).toInt()
+                setPadding(currentLeft, paddingTop, currentRight, paddingBottom)
             }
         }
 
-        AnimatorSet().apply {
+        morphAnimator = AnimatorSet().apply {
             playTogether(widthAnimator, paddingAnimator)
             duration = 300
             addListener(object : AnimatorListenerAdapter() {
+                private var isCanceled = false
+
+                override fun onAnimationCancel(animation: Animator) {
+                    isCanceled = true
+                }
+
                 override fun onAnimationStart(animation: Animator) {
                     text = "" // Hide text as it morphs
+                    spinner?.start()
                 }
 
                 override fun onAnimationEnd(animation: Animator) {
+                    if (isCanceled) return
                     isMorphing = false
                     isProgressing = true
-                    
+
                     // Display and start Material 3 Wave animation
-                    icon = indeterminateDrawable
-                    (indeterminateDrawable as Animatable).start()
+                    val spec = CircularProgressIndicatorSpec(
+                        context,
+                        null,
+                        0,
+                        com.google.android.material.R.style.Widget_Material3Expressive_CircularProgressIndicator_Wavy
+                    ).apply {
+                        indicatorColors = intArrayOf(textColors.defaultColor)
+                        indicatorSize = (this@CircularProgressButton.height * 0.6).toInt()
+                        trackThickness = (this@CircularProgressButton.height * 0.1).toInt()
+                    }
+                    spinner = IndeterminateDrawable.createCircularDrawable(context, spec)
+                    icon = spinner
+
                 }
             })
             start()
@@ -97,34 +115,52 @@ class CircularProgressButton @JvmOverloads constructor(
     }
 
     fun revertAnimation() {
-        if (isMorphing || !isProgressing) return
+        if (!isMorphing && !isProgressing) return
+
+        val currentWidth = if (isMorphing) {
+            morphAnimator?.cancel()
+            layoutParams.width
+        } else {
+            height
+        }
+
         isMorphing = true
         isProgressing = false
 
         // Stop and hide the spinner
-        (indeterminateDrawable as Animatable).stop()
+        spinner?.stop()
+        spinner = null
         icon = null
 
-        val finalWidth = height
-
-        val widthAnimator = ValueAnimator.ofInt(finalWidth, initialWidth).apply {
+        val widthAnimator = ValueAnimator.ofInt(currentWidth, initialWidth).apply {
             addUpdateListener {
                 layoutParams = layoutParams.apply { width = it.animatedValue as Int }
             }
         }
 
         val paddingAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
+            val startPaddingLeft = paddingLeft
+            val startPaddingRight = paddingRight
             addUpdateListener {
                 val fraction = it.animatedValue as Float
-                setPadding((initialPaddingLeft * fraction).toInt(), paddingTop, (initialPaddingRight * fraction).toInt(), paddingBottom)
+                val currentLeft = startPaddingLeft + ((initialPaddingLeft - startPaddingLeft) * fraction).toInt()
+                val currentRight = startPaddingRight + ((initialPaddingRight - startPaddingRight) * fraction).toInt()
+                setPadding(currentLeft, paddingTop, currentRight, paddingBottom)
             }
         }
 
-        AnimatorSet().apply {
+        morphAnimator = AnimatorSet().apply {
             playTogether(widthAnimator, paddingAnimator)
             duration = 300
             addListener(object : AnimatorListenerAdapter() {
+                private var isCanceled = false
+
+                override fun onAnimationCancel(animation: Animator) {
+                    isCanceled = true
+                }
+
                 override fun onAnimationEnd(animation: Animator) {
+                    if (isCanceled) return
                     text = initialText
                     isMorphing = false
                     isClickable = true
